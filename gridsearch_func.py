@@ -213,7 +213,11 @@ def solvesinglegrid(rootsavefolder, singlerunfunc, rangefunclist, printdetails =
                 os.makedirs(savefolderstage)
 
         # get input and output values from last iteration
-        inputlist, outputlist = getcurrentstate_singlegrid(savefolderstage)
+        if savefolderstagem1 is not None:
+            inputlist, outputlist = getcurrentstate_singlegrid(savefolderstage)
+        else:
+            inputlist = []
+            outputlist = []
 
         # updated range to consider
         rangetorun = rangefunclist[i](inputlist, outputlist)
@@ -609,7 +613,10 @@ def solvemultigrid(rootsavefolder, singlerunfunc, rangefunclist, printdetails = 
                     os.makedirs(savefolderstage)
 
         # get input and output values from last iteration
-        inputdict = getcurrentstate_multigrid(savefolderstage)
+        if savefolderstagem1 is not None:
+            inputdict = getcurrentstate_multigrid(savefolderstagem1)
+        else:
+            inputdict = {}
 
         # updated range to consider
         outputdict = rangefunclist[i](inputdict)
@@ -796,7 +803,7 @@ def solvemultigrid_ex_singleprocess_twostages(pltshow = False):
 
 def solvemultigrid_ex_multiprocess_twostages(pltshow = False):
     # set seed so always get same result
-    # np.random.seed(0)
+    np.random.seed(0)
 
     # remove
     testfolder = __projectdir__ / Path('tests/multigrid_multiprocess_twostages/')
