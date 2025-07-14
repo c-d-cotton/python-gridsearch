@@ -230,19 +230,19 @@ def solvesinglegrid(rootsavefolder, singlerunfunc, rangefunclist, printdetails =
         rangetorun = rangetorun2
 
         if len(rangetorun) == 0:
-            message = 'Already completed iteration ' + str(i) + '.'
+            message = str(datetime.datetime.now()) + ' Already completed iteration ' + str(i) + '.'
             if printdetails is True:
                 print(message)
             if outputfilename is not None:
-                with open(outputfilename, 'w+') as f:
-                    f.write(message)
+                with open(outputfilename, 'a+') as f:
+                    f.write(message + '\n')
         else:
-            message = 'Starting iteration ' + str(i) + '. Number of files: ' + str(len(rangetorun)) + '.'
+            message = str(datetime.datetime.now()) + ' Starting iteration ' + str(i) + '. Number of files: ' + str(len(rangetorun)) + '.'
             if printdetails is True:
                 print(message)
             if outputfilename is not None:
-                with open(outputfilename, 'w+') as f:
-                    f.write(message)
+                with open(outputfilename, 'a+') as f:
+                    f.write(message + '\n')
                 
         elements = [(savefolderstage, inputvalue, otherparamstopass) for inputvalue in rangetorun]
 
@@ -647,19 +647,19 @@ def solvemultigrid(rootsavefolder, singlerunfunc, rangefunclist, outputfilename=
         outputdict = outputdict2
 
         if len(outputdict) == 0:
-            message = 'Already completed stage ' + str(i) + '.'
+            message = str(datetime.datetime.now()) + ' Already completed stage ' + str(i) + '.'
             if printdetails is True:
                 print(message)
             if outputfilename is not None:
-                with open(outputfilename, 'w+') as f:
-                    f.write(message)
+                with open(outputfilename, 'a+') as f:
+                    f.write(message + '\n')
         else:
-            message = 'Starting stage ' + str(i) + '. Number of files: ' + str(sum(map(len, outputdict.values()))) + '.'
+            message = str(datetime.datetime.now()) + ' Starting stage ' + str(i) + '. Number of files: ' + str(sum(map(len, outputdict.values()))) + '.'
             if printdetails is True:
                 print(message)
             if outputfilename is not None:
-                with open(outputfilename, 'w+') as f:
-                    f.write(message)
+                with open(outputfilename, 'a+') as f:
+                    f.write(message + '\n')
                 
         elements = [(savefolderstage, x1value, x2value, otherparamstopass) for x1value in outputdict for x2value in outputdict[x1value]]
 
