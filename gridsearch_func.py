@@ -179,7 +179,7 @@ def rangearoundmin(widthoneside, maxinterval, inputvalues, outputvalues):
 
     
 # Solve Single Grid Model (Computing x*):{{{1
-def solvesinglegrid(rootsavefolder, singlerunfunc, rangefunclist, printdetails = True, numprocesses = 1, otherparamstopass = None, initialfolder = None):
+def solvesinglegrid(rootsavefolder, singlerunfunc, rangefunclist, printdetails = True, numprocesses = 1, otherparamstopass = None, initialfolder = None, outputfilename=None):
     """
     Iterate over a grid to find the minimum of a function singlerunfunc
     rootsavefolder is the root folder; I then have a different folder for each stage to ensure I can rerun without issues (otherwise adding new values may affect what rangefunclist does)
@@ -230,11 +230,19 @@ def solvesinglegrid(rootsavefolder, singlerunfunc, rangefunclist, printdetails =
         rangetorun = rangetorun2
 
         if len(rangetorun) == 0:
+            message = 'Already completed iteration ' + str(i) + '.'
             if printdetails is True:
-                print('Already completed iteration ' + str(i) + '.')
+                print(message)
+            if outputfilename is not None:
+                with open(outputfilename, 'w+') as f:
+                    f.write(message)
         else:
+            message = 'Starting iteration ' + str(i) + '. Number of files: ' + str(len(rangetorun)) + '.'
             if printdetails is True:
-                print('Starting iteration ' + str(i) + '. Number of files: ' + str(len(rangetorun)) + '.')
+                print(message)
+            if outputfilename is not None:
+                with open(outputfilename, 'w+') as f:
+                    f.write(message)
                 
         elements = [(savefolderstage, inputvalue, otherparamstopass) for inputvalue in rangetorun]
 
@@ -558,14 +566,14 @@ def rangearoundfittedcurve(x1values_new, widthoneside, maxinterval, fitfunc, inp
     return(outputdict)
 
     
-def rangearoundfittedcurve_poly(x1values_new, widthoneside, maxinterval, coeff, inputdict, ismaximum = False, printdetails = True, addlbfunc = None, addubfunc = None, alternativesavefolder = None):
+def rangearoundfittedcurve_poly(x1values_new, widthoneside, maxinterval, coeff, inputdict, ismaximum = False, printdetails = True, addlbfunc = None, addubfunc = None, alternativesavefolder = None, outputfilename = None):
     """
     fitfunc is how I compute estimated values for what new x2values will be given new x1values
     i.e. x2values_new_fit = fitfunc(x1values_current, x2values_current, x1values_new)
     """
 
     # set fitfunc to be a polynomial
-    fitfunc = functools.partial(polyestfit_getvec, coeff, printdetails = printdetails)
+    fitfunc = functools.partial(polyestfit_getvec, coeff, outputfilename = outputfilename, printdetails = printdetails)
 
     outputdict = rangearoundfittedcurve(x1values_new, widthoneside, maxinterval, fitfunc, inputdict, addlbfunc = addlbfunc, addubfunc = addubfunc, alternativesavefolder = alternativesavefolder)
 
@@ -573,7 +581,7 @@ def rangearoundfittedcurve_poly(x1values_new, widthoneside, maxinterval, coeff, 
     
 
 # Solve Multi Grid Model:{{{1
-def solvemultigrid(rootsavefolder, singlerunfunc, rangefunclist, printdetails = True, numprocesses = 1, otherparamstopass = None, initialfolder = None):
+def solvemultigrid(rootsavefolder, singlerunfunc, rangefunclist, outputfilename=None, printdetails = True, numprocesses = 1, otherparamstopass = None, initialfolder = None):
     """
     Key difference between this and solvesinglegrid: f1 is now a function of two values f(x1, x2)
     We want to find x1^star given a value of x2
@@ -639,11 +647,19 @@ def solvemultigrid(rootsavefolder, singlerunfunc, rangefunclist, printdetails = 
         outputdict = outputdict2
 
         if len(outputdict) == 0:
+            message = 'Already completed stage ' + str(i) + '.'
             if printdetails is True:
-                print('Already completed stage ' + str(i) + '.')
+                print(message)
+            if outputfilename is not None:
+                with open(outputfilename, 'w+') as f:
+                    f.write(message)
         else:
+            message = 'Starting stage ' + str(i) + '. Number of files: ' + str(sum(map(len, outputdict.values()))) + '.'
             if printdetails is True:
-                print('Starting stage ' + str(i) + '. Number of files: ' + str(sum(map(len, outputdict.values()))) + '.')
+                print(message)
+            if outputfilename is not None:
+                with open(outputfilename, 'w+') as f:
+                    f.write(message)
                 
         elements = [(savefolderstage, x1value, x2value, otherparamstopass) for x1value in outputdict for x2value in outputdict[x1value]]
 
