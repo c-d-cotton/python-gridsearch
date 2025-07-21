@@ -93,8 +93,8 @@ def getcurrentstate_singlegrid(savefolder, xvalues = None):
         with open(os.path.join(savefolder, xstr)) as f:
             text = f.read()
 
-        inputval = float(text.split(',')[0])
-        outputval = float(text.split(',')[1])
+        inputval = text.split(',')[0]
+        outputval = text.split(',')[1]
 
         inputlist.append(inputval)
         outputlist.append(outputval)
@@ -169,8 +169,8 @@ def rangearoundmin(widthoneside, maxinterval, inputvalues, outputvalues):
     argmin = np.argmin(outputvalues)
     themin = inputvalues[argmin]
 
-    lb = themin - widthoneside
-    ub = themin + widthoneside
+    lb = float(themin) - widthoneside
+    ub = float(themin) + widthoneside
 
     # get range of values to run
     rangetorun = getrangetorun(lb, ub, maxinterval, inputvalues)
@@ -403,7 +403,7 @@ def getcurrentstate_multigrid(savefolder, x1valdict = None):
     (x1, x2) are the points I'm considering where I want to find x1^star(x2)
     Then the structure of the saves are savefolder/x1/x2
 
-    x1 is a string while x2 is a float
+    x1 and x2 are strings in line with fact they refer to files
     """
     x1values = os.listdir(savefolder)
 
@@ -516,7 +516,7 @@ def rangearoundfittedcurve(x1values_new, widthoneside, maxinterval, fitfunc, inp
         x2value = inputvalues[argmin]
 
         x1values.append(float(x1value))
-        x2values.append(x2value)
+        x2values.append(float(x2value))
 
     # # compute polynomial fit
     # sys.path.append(str(__projectdir__ / Path('submodules/python-math-func/')))
@@ -683,7 +683,7 @@ def solvemultigrid(rootsavefolder, singlerunfunc, rangefunclist, outputfilename=
 
 
 # Analysis Multi Grid Model:{{{1
-def getmin_multigrid(savefolder):
+def getmin_multigrid(savefolder, returnstring = False):
     if not os.path.isdir(savefolder):
         raise ValueError('Not a folder: ' + str(savefolder) + '.')
 
@@ -698,8 +698,12 @@ def getmin_multigrid(savefolder):
         argmin = np.argmin(outputvalues)
         x2value = inputvalues[argmin]
 
-        x1values.append(float(x1value))
-        x2values.append(float(x2value))
+        if returnstring is False:
+            x1value = float(x1value)
+            x2value = float(x2value)
+            
+        x1values.append(x1value)
+        x2values.append(x2value)
 
     return(x1values, x2values)
 
@@ -716,7 +720,8 @@ def getdetails_multigrid(savefolder, fitfunc = None, pltshow = False, pltsavenam
         raise ValueError('Not a folder: ' + str(savefolder) + '.')
     x1values, x2values = getmin_multigrid(savefolder)
 
-    plt.plot(x1values, x2values, 'o', label = 'Simulation')
+    if pltshow is True or pltsavename is not None:
+        plt.plot(x1values, x2values, 'o', label = 'Simulation')
 
     if fitfunc is not None:
         x2values_fitted = fitfunc(x1values, x2values, x1values)
