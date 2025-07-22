@@ -51,8 +51,9 @@ def getrangetorun(lb, ub, maxinterval, existingrange = None, decimalplaces = 8):
     dropi = []
     for i, val in enumerate(vals):
         for existing in existingrange:
-            # subtract 1e-9 so that if I do 1.00, 1.01, 1.02 with a maxinterval of 0.01 then I would still include 1.01 if 1.00 and 1.02 already exist
-            if abs(float(existing) - val) < maxinterval - 1e-9:
+            # subtract 1e-8 so that if I do 1.00, 1.01, 1.02 with a maxinterval of 0.01 then I would still include 1.01 if 1.00 and 1.02 already exist
+            # this didn't always work with 1e-9 so make the default amount that I measure the decimal places to
+            if abs(float(existing) - val) < maxinterval - 1e-8:
                 dropi.append(i)
                 break
 
@@ -155,22 +156,37 @@ def finishedprocessingqsub(filenames, timesleep = 300, printdetails = True, outp
 
 
 # Rangefunclist Functions:{{{1
-def getrangetorun_singlegrid(lb, ub, maxinterval, inputvalues, outputvalues, decimalplaces = 8):
+def getrangetorun_singlegrid(lb, ub, maxinterval, savefolderstagem1, savefolderstage, decimalplaces = 8):
     """
     This is similar to the standard getrangetorun function except that it takes savefolder as an argument
     I can then use this as one of the functions in rangefunclist
+    Note we do not use savefolderstagem1 as things stand
     """
+    inputvalues, _ = getcurrentstate_singlegrid(savefolderstage)
+
     rangetorun = getrangetorun(lb, ub, maxinterval, existingrange = inputvalues, decimalplaces = decimalplaces)
     return(rangetorun)
 
 
-def rangearoundmin(widthoneside, maxinterval, inputvalues, outputvalues):
+def rangearoundmin(widthoneside, maxinterval, savefolderstagem1, savefolderstage, alternativestagem1folder=None):
+
+    if savefolderstagem1 is None:
+        raise ValueError('Need savefolderstagem1 to be defined for rangearoundmin to be applied.')
+
+    # get input and output values from last iteration
+    inputvalues_m1, outputvalues_m1 = getcurrentstate_singlegrid(savefolderstagem1)
+
     # compute the minimum
-    argmin = np.argmin(outputvalues)
-    themin = inputvalues[argmin]
+    argmin = np.argmin(outputvalues_m1)
+    themin = inputvalues_m1[argmin]
 
     lb = float(themin) - widthoneside
     ub = float(themin) + widthoneside
+
+    # GET VALUES FOR NEW RUN
+
+    # first we need to get the inputvalues for the new stage folder
+    inputvalues, _ = getcurrentstate_singlegrid(savefolderstage)
 
     # get range of values to run
     rangetorun = getrangetorun(lb, ub, maxinterval, inputvalues)
@@ -179,48 +195,46 @@ def rangearoundmin(widthoneside, maxinterval, inputvalues, outputvalues):
 
     
 # Solve Single Grid Model (Computing x*):{{{1
-def solvesinglegrid(rootsavefolder, singlerunfunc, rangefunclist, printdetails = True, numprocesses = 1, otherparamstopass = None, initialfolder = None, outputfilename=None):
+def solvesinglegrid(rootsavefolder, singlerunfunc, rangefunclist, printdetails = True, numprocesses = 1, otherparamstopass = None, initialfolder = None, outputfilename=None, copystagem1 = False):
     """
     Iterate over a grid to find the minimum of a function singlerunfunc
     rootsavefolder is the root folder; I then have a different folder for each stage to ensure I can rerun without issues (otherwise adding new values may affect what rangefunclist does)
-    rangefunclist is a list of functions that take the current savefolder and compute the values to try next for the function
+    rangefunclist is a list of functions that take the prior and current savefolder and compute the values to try next for the function
     numprocesses allows me to do multiprocessing
     otherparamstopass allows other parameters to be passed to the function
     initialfolder means that I copy the first stage folder from somewhere else before beginning
     """
 
-    if rangefunclist is None:
-        rangefunclist = []
+    if not isinstance(copystagem1, list):
+        copystagem1list = [copystagem1] * len(rangefunclist)
+    else:
+        copystagem1list = copystagem1
+    if len(copystagem1list) != len(rangefunclist):
+        raise ValueError('copystagem1 is the wrong length.')
 
-    for i in range(len(rangefunclist)):
-        if i > 0:
-            savefolderstagem1 = savefolderstage
-        elif initialfolder is not None:
-            if not os.path.isdir(initialfolder):
-                raise ValueError('initialfolder is not a folder: ' + str(initialfolder) + '.')
+    for stagenum in range(len(rangefunclist)):
+        # current stage
+        savefolderstage = rootsavefolder / Path('stage' + str(stagenum))
+        # previous stage
+        if stagenum > 0:
+            savefolderstagem1 = rootsavefolder / Path('stage' + str(stagenum-1) + '/')
+        elif stagenum == 0 and initialfolder is not None:
             savefolderstagem1 = initialfolder
         else:
             savefolderstagem1 = None
-        savefolderstage = rootsavefolder / Path('stage' + str(i))
-        # if current stage exists then just use as is (assuming may have already started running the folder in this case)
+        if savefolderstagem1 is not None and not os.path.isdir(savefolderstagem1):
+            raise ValueError('savefolderstagem1 does not exist and should: ' + str(savefolderstagem1) + '.')
+
         if not os.path.isdir(savefolderstage):
-            # otherwise copy or make new folder appropriately
-            if savefolderstagem1 is not None:
-                # copy across prior stage so can use prior runs in next stage
-                # the reason we don't just use the same folder for each run is that after adding the stage1 results, that could change the polynomial that we select after stage0
+            if copystagem1list[stagenum] is True:
+                if savefolderstagem1 is None:
+                    raise ValueError('savefolderstagem1 is None and copystagem1 is True.')
                 shutil.copytree(savefolderstagem1, savefolderstage)
             else:
                 os.makedirs(savefolderstage)
 
-        # get input and output values from last iteration
-        if savefolderstagem1 is not None:
-            inputlist, outputlist = getcurrentstate_singlegrid(savefolderstage)
-        else:
-            inputlist = []
-            outputlist = []
-
         # updated range to consider
-        rangetorun = rangefunclist[i](inputlist, outputlist)
+        rangetorun = rangefunclist[stagenum](savefolderstagem1, savefolderstage)
 
         # remove files which already done
         rangetorun2 = []
@@ -230,14 +244,14 @@ def solvesinglegrid(rootsavefolder, singlerunfunc, rangefunclist, printdetails =
         rangetorun = rangetorun2
 
         if len(rangetorun) == 0:
-            message = str(datetime.datetime.now()) + ' Already completed iteration ' + str(i) + '.'
+            message = str(datetime.datetime.now()) + ' Already completed iteration ' + str(stagenum) + '.'
             if printdetails is True:
                 print(message)
             if outputfilename is not None:
                 with open(outputfilename, 'a+') as f:
                     f.write(message + '\n')
         else:
-            message = str(datetime.datetime.now()) + ' Starting iteration ' + str(i) + '. Number of files: ' + str(len(rangetorun)) + '.'
+            message = str(datetime.datetime.now()) + ' Starting iteration ' + str(stagenum) + '. Number of files: ' + str(len(rangetorun)) + '.'
             if printdetails is True:
                 print(message)
             if outputfilename is not None:
@@ -296,8 +310,8 @@ def solvesinglegrid_ex_singleprocess_initonly():
 
     # remove
     testfolder = __projectdir__ / Path('tests/singlegrid_singleprocess_initonly/')
-    # if os.path.isdir(testfolder):
-    #     shutil.rmtree(testfolder)
+    if os.path.isdir(testfolder):
+        shutil.rmtree(testfolder)
 
     if not os.path.isdir(testfolder):
         os.makedirs(testfolder)
@@ -357,7 +371,9 @@ def solvesinglegrid_ex_multiprocess_twostages():
     # this is a way of allowing me to change parameters in the function without having to specify a different function to run each time
     otherparamstopass = None
 
-    solvesinglegrid(testfolder, singlegridmodel_ex, rangefunclist = rangefunclist, numprocesses = multiprocessing.cpu_count(), otherparamstopass = otherparamstopass)
+    # copystagem1 = [False, True] means that I copy files across from the first stage to the second stage
+    # saves time in the second stage
+    solvesinglegrid(testfolder, singlegridmodel_ex, rangefunclist = rangefunclist, numprocesses = multiprocessing.cpu_count(), otherparamstopass = otherparamstopass, copystagem1 = [False, True])
 
     inputlist, outputlist = getcurrentstate_singlegrid(testfolder / Path('stage1'))
     argmin = np.argmin(outputlist)
@@ -440,18 +456,17 @@ def saveoutput_multigrid(savefolder, x1value, x2value, outputvalue, otherinfo = 
 
 
 # How Update Multigrid Range:{{{1
-def getrangetorun_multigrid(x1values, lb, ub, maxinterval, inputdict, decimalplaces = 8, addlbfunc = None, addubfunc = None):
+def getrangetorun_multigrid(x1values, lb, ub, maxinterval, savefolderstagem1, savefolderstage, decimalplaces = 8, addlbfunc = None, addubfunc = None):
     """
     Get the initial range of values on which to consider a grid search. If the currentvalues already exist then use those.
 
-    Note that we don't actually need outputvalues.
+    Note that we don't actually need savefolderstagem1.
 
     addlbfunc(x1value) defines a second lower bound for a given x1value. If this is higher than lb, this applies, otherwise lb applies
     """
 
-    # I think I should do this outside of the iterative function to ensure I always get the same
-    # convert to string to avoid issues with saving floats
-    # x1values = fixfloats(x1values, decimalplaces = decimalplaces)
+    inputdict = getcurrentstate_multigrid(savefolderstage)
+
     outputdict = {}
     for x1value in x1values:
         if x1value in inputdict:
@@ -474,67 +489,38 @@ def getrangetorun_multigrid(x1values, lb, ub, maxinterval, inputdict, decimalpla
     return(outputdict)
 
 
-def rangearoundfittedcurve(x1values_new, widthoneside, maxinterval, fitfunc, inputdict, addlbfunc = None, addubfunc = None, alternativesavefolder = None):
+def rangearoundfittedcurve(x1values_new, widthoneside, maxinterval, fitfunc, savefolderstagem1, savefolderstage, addlbfunc = None, addubfunc = None):
     """
     fitfunc is how I compute estimated values for what new x2values will be given new x1values
     i.e. x2values_new_fit = fitfunc(x1values_current, x2values_current, x1values_new)
     """
 
-    if alternativesavefolder is not None:
-        # want possibility of getting fitted curve from a folder other than the one I'm considering
-        # for example, let's say I want to minimize f_a, f_b over similar values
-        # if f_a and f_b have similar minima, to consider x2^star(x1) for f_b for x1=[1, 2], I can compute the x2^star(x1) implied by f_a for [1, 2]
-        inputdict_current = getcurrentstate_multigrid(alternativesavefolder)
-    else:
-        inputdict_current = inputdict
+    if savefolderstagem1 is None:
+        raise ValueError('Need savefolderstagem1 to be defined for rangearoundmin to be applied.')
+
+    # get inputdict from last iteration
+    # use this to compute x2*(x1)
+    inputdict_m1 = getcurrentstate_multigrid(savefolderstagem1)
 
     # compute the minimum
     x1values = []
     x2values = []
-    for x1value in inputdict_current:
+    for x1value in inputdict_m1:
 
-        outputvalues = inputdict_current[x1value][1]
-        inputvalues = inputdict_current[x1value][0]
+        outputvalues_m1 = inputdict_m1[x1value][1]
+        inputvalues_m1 = inputdict_m1[x1value][0]
 
-        # if smoothing is not None, smooth outputvalues to get better estimate of current x2^star(x1)
-        # smoothing should be an integer
-        # if smoothing not in [None, False]:
-        #     # don't want smoothing to be too high since that would mean they'd be very few x2 points to choose from
-        #     smoothing = np.min([smoothing, np.max([len(outputvalues) // 4, 1])])
-        #
-        #     # do smoothing
-        # sys.path.append(str(__projectdir__ / Path('submodules/python-math-func/')))
-        # from smooth_func import masmoothseries
-        #     outputvalues = masmoothseries(outputvalues, smoothing)
-        #
-        #     # remove nan values
-        #     na_val = ~np.isnan(outputvalues)
-        #     inputvalues = np.array(inputvalues)[na_val]
-        #     outputvalues = outputvalues[na_val]
-        
-        argmin = np.argmin(outputvalues)
-        x2value = inputvalues[argmin]
+        argmin = np.argmin(outputvalues_m1)
+        x2value = inputvalues_m1[argmin]
 
         x1values.append(float(x1value))
         x2values.append(float(x2value))
 
-    # # compute polynomial fit
-    # sys.path.append(str(__projectdir__ / Path('submodules/python-math-func/')))
-    # from poly_fit_func import polyestimate
-    # betahat = polyestimate(x1values, coeff, x2values)
-    #
-    # if printdetails is True:
-    #     printorwrite('Estimated polynomial: ' + ' + '.join([str(betahat[i]) + 'x**' + str(i) for i in range(len(betahat))]) + '.', outputfilename)
-    #
-    # # estimated x2values_new based upon x1values_new I'm going to run
-    # sys.path.append(str(__projectdir__ / Path('submodules/python-math-func/')))
-    # from poly_fit_func import polyfit
-    # x2valueshat = polyfit(coeff, betahat, [float(x1value) for x1value in x1values_new])
-    # x2valueshat = x2valueshat.reshape([len(x2valueshat)])
-
-
+    # get x2*(x1new) for given new x1 values based on older x1/x2 values
     x2valueshat = fitfunc(x1values, x2values, [float(x1value) for x1value in x1values_new])
 
+    # get inputdict for current state of new folder
+    inputdict = getcurrentstate_multigrid(savefolderstage)
 
     outputdict = {}
     for i in range(len(x1values_new)):
@@ -554,19 +540,20 @@ def rangearoundfittedcurve(x1values_new, widthoneside, maxinterval, fitfunc, inp
 
         # get existing x2values for each x1value
         if x1value in inputdict:
-            inputvalues = inputdict[x1value][0]
+            # inputdict[x1value] = x2values, minvalues so selecting only x2values
+            existingx2values = inputdict[x1value][0]
         else:
-            inputvalues = []
+            existingx2values = []
 
         # get range of values to run
-        rangetorun = getrangetorun(lb, ub, maxinterval, inputvalues)
+        rangetorun = getrangetorun(lb, ub, maxinterval, existingx2values)
 
         outputdict[x1value] = rangetorun
 
     return(outputdict)
 
     
-def rangearoundfittedcurve_poly(x1values_new, widthoneside, maxinterval, coeff, inputdict, ismaximum = False, printdetails = True, addlbfunc = None, addubfunc = None, alternativesavefolder = None, outputfilename = None):
+def rangearoundfittedcurve_poly(x1values_new, widthoneside, maxinterval, coeff, savefolderstagem1, savefolderstage, ismaximum = False, printdetails = True, addlbfunc = None, addubfunc = None, outputfilename = None):
     """
     fitfunc is how I compute estimated values for what new x2values will be given new x1values
     i.e. x2values_new_fit = fitfunc(x1values_current, x2values_current, x1values_new)
@@ -575,13 +562,13 @@ def rangearoundfittedcurve_poly(x1values_new, widthoneside, maxinterval, coeff, 
     # set fitfunc to be a polynomial
     fitfunc = functools.partial(polyestfit_getvec, coeff, outputfilename = outputfilename, printdetails = printdetails)
 
-    outputdict = rangearoundfittedcurve(x1values_new, widthoneside, maxinterval, fitfunc, inputdict, addlbfunc = addlbfunc, addubfunc = addubfunc, alternativesavefolder = alternativesavefolder)
+    outputdict = rangearoundfittedcurve(x1values_new, widthoneside, maxinterval, fitfunc, savefolderstagem1, savefolderstage, addlbfunc = addlbfunc, addubfunc = addubfunc)
 
     return(outputdict)
     
 
 # Solve Multi Grid Model:{{{1
-def solvemultigrid(rootsavefolder, singlerunfunc, rangefunclist, outputfilename=None, printdetails = True, numprocesses = 1, otherparamstopass = None, initialfolder = None):
+def solvemultigrid(rootsavefolder, singlerunfunc, rangefunclist, outputfilename=None, printdetails = True, numprocesses = 1, otherparamstopass = None, initialfolder = None, copystagem1 = False):
     """
     Key difference between this and solvesinglegrid: f1 is now a function of two values f(x1, x2)
     We want to find x1^star given a value of x2
@@ -590,44 +577,37 @@ def solvemultigrid(rootsavefolder, singlerunfunc, rangefunclist, outputfilename=
     And the output of rangefunclist[i] is a dictionary 
     """
 
-    for i in range(len(rangefunclist)):
-        if i > 0:
-            savefolderstagem1 = savefolderstage
-        elif initialfolder is not None:
-            if not os.path.isdir(initialfolder):
-                raise ValueError('initialfolder is not a folder: ' + str(initialfolder) + '.')
+
+    if not isinstance(copystagem1, list):
+        copystagem1list = [copystagem1] * len(rangefunclist)
+    else:
+        copystagem1list = copystagem1
+    if len(copystagem1list) != len(rangefunclist):
+        raise ValueError('copystagem1 is the wrong length.')
+
+    for stagenum in range(len(rangefunclist)):
+        # current stage
+        savefolderstage = rootsavefolder / Path('stage' + str(stagenum))
+        # previous stage
+        if stagenum > 0:
+            savefolderstagem1 = rootsavefolder / Path('stage' + str(stagenum-1) + '/')
+        elif stagenum == 0 and initialfolder is not None:
             savefolderstagem1 = initialfolder
         else:
             savefolderstagem1 = None
-        savefolderstage = rootsavefolder / Path('stage' + str(i))
-        if not os.path.isdir(savefolderstage):
-            if savefolderstagem1 is not None:
-                # copy across prior stage so can use prior runs in next stage
-                # the reason we don't just use the same folder for each run is that after adding the stage1 results, that could change the polynomial that we select after stage0
-                if numprocesses > 1:
-                    try:
-                        shutil.copytree(savefolderstagem1, savefolderstage)
-                    except Exception:
-                        None
-                else:
-                    shutil.copytree(savefolderstagem1, savefolderstage)
-            else:
-                if numprocesses > 1:
-                    try:
-                        os.makedirs(savefolderstage)
-                    except Exception:
-                        None
-                else:
-                    os.makedirs(savefolderstage)
+        if savefolderstagem1 is not None and not os.path.isdir(savefolderstagem1):
+            raise ValueError('savefolderstagem1 does not exist and should: ' + str(savefolderstagem1) + '.')
 
-        # get input and output values from last iteration
-        if savefolderstagem1 is not None:
-            inputdict = getcurrentstate_multigrid(savefolderstagem1)
-        else:
-            inputdict = {}
+        if not os.path.isdir(savefolderstage):
+            if copystagem1list[stagenum] is True:
+                if savefolderstagem1 is None:
+                    raise ValueError('savefolderstagem1 is None and copystagem1 is True.')
+                shutil.copytree(savefolderstagem1, savefolderstage)
+            else:
+                os.makedirs(savefolderstage)
 
         # updated range to consider
-        outputdict = rangefunclist[i](inputdict)
+        outputdict = rangefunclist[stagenum](savefolderstagem1, savefolderstage)
 
         # remove x1 folders that we are no longer considering
         # why? because these may have limited x2 values so it would be better to consider the fit using only the x1 values for the latest iteration
@@ -647,14 +627,14 @@ def solvemultigrid(rootsavefolder, singlerunfunc, rangefunclist, outputfilename=
         outputdict = outputdict2
 
         if len(outputdict) == 0:
-            message = str(datetime.datetime.now()) + ' Already completed stage ' + str(i) + '.'
+            message = str(datetime.datetime.now()) + ' Already completed stage ' + str(stagenum) + '.'
             if printdetails is True:
                 print(message)
             if outputfilename is not None:
                 with open(outputfilename, 'a+') as f:
                     f.write(message + '\n')
         else:
-            message = str(datetime.datetime.now()) + ' Starting stage ' + str(i) + '. Number of files: ' + str(sum(map(len, outputdict.values()))) + '.'
+            message = str(datetime.datetime.now()) + ' Starting stage ' + str(stagenum) + '. Number of files: ' + str(sum(map(len, outputdict.values()))) + '.'
             if printdetails is True:
                 print(message)
             if outputfilename is not None:
@@ -844,7 +824,8 @@ def solvemultigrid_ex_multiprocess_twostages(pltshow = False):
     func_stage1 = functools.partial(rangearoundfittedcurve_poly, x1values_stage1, 0.5, 0.1, 3)
     rangefunclist = [func_stage0, func_stage1]
 
-    solvemultigrid(testfolder, multigridmodel_ex, rangefunclist, numprocesses = multiprocessing.cpu_count())
+    # copy across from stage0 to stage1 to save time
+    solvemultigrid(testfolder, multigridmodel_ex, rangefunclist, numprocesses = multiprocessing.cpu_count(), copystagem1 = [False, True])
 
     fitfunc = functools.partial(polyestfit_getvec, 2, printdetails = True)
     getdetails_multigrid(testfolder / Path('stage1'), fitfunc = fitfunc, pltshow = pltshow)
